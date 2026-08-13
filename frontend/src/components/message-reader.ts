@@ -105,7 +105,7 @@ export class MessageReader extends LitElement {
       const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
       const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
 
-      const { subject, to, cc, quotedText, quotedHtml } = generateQuote(
+      const { subject, to, cc, quotedText, quotedHtml, quotedRawHtml } = generateQuote(
         action,
         this.message,
         textBody,
@@ -130,6 +130,11 @@ export class MessageReader extends LitElement {
         cc,
         text: quotedText,
         html: quotedHtml,
+        quotedRawHtml,
+        quoteMailbox: this.mailbox,
+        quoteMessageUid: this.message.UID,
+        quoteAllowRemoteResources: this.allowRemoteResources,
+        quoteMessageStructure: this.message?.BodyStructure,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
         inReplyTo
@@ -1218,7 +1223,7 @@ export class MessageReader extends LitElement {
       const dateFormat = this.settingsStore?.getState()?.dateFormat || 'YYYY-MM-DD';
       const hourFormat = String(this.settingsStore?.getState()?.hourFormat || '12');
 
-      const { subject, to, cc, quotedText, quotedHtml } = generateQuote(
+      const { subject, to, cc, quotedText, quotedHtml, quotedRawHtml } = generateQuote(
         action,
         item.message,
         textBody,
@@ -1243,6 +1248,11 @@ export class MessageReader extends LitElement {
         cc,
         text: quotedText,
         html: quotedHtml,
+        quotedRawHtml,
+        quoteMailbox: item.mailbox,
+        quoteMessageUid: item.message.UID,
+        quoteAllowRemoteResources: item.allowRemoteResources,
+        quoteMessageStructure: item.message?.BodyStructure,
         format: this.settingsStore?.getState()?.composeFormat || 'html',
         attachments: attachments,
         inReplyTo

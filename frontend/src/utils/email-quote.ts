@@ -53,17 +53,25 @@ export function generateQuote(
 
   const quotedText = `\n\n${quoteHeader}\n` + textBody.split('\n').map(line => `> ${line}`).join('\n');
 
+  // When the original message has HTML, the header/body wrapper (quotedHtml) is kept
+  // as normal editable rich text, while the original message's own markup is returned
+  // separately as quotedRawHtml. It is preserved byte-for-byte (rendered read-only,
+  // e.g. in a sandboxed iframe) rather than round-tripped through the rich-text
+  // editor's schema, which cannot represent arbitrary email HTML (tables, inline
+  // styles, images, custom fonts) without silently destroying it.
   let quotedHtml = '';
+  let quotedRawHtml = '';
   if (hasHtml && rawMessageHtml) {
     if (type === 'forward') {
       const toStrs = formatAddrs(message?.Envelope?.To).join(', ');
-      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${senderName} &lt;${senderAddress}&gt;<br>Date: ${dateStr}<br>Subject: ${originalSubject}<br>To: ${toStrs}<br></div><br>${rawMessageHtml}</div>`;
+      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">---------- Forwarded message ---------<br>From: ${senderName} &lt;${senderAddress}&gt;<br>Date: ${dateStr}<br>Subject: ${originalSubject}<br>To: ${toStrs}<br></div></div>`;
     } else {
-      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${dateStr}, ${senderName} wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${rawMessageHtml}</blockquote></div>`;
+      quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">On ${dateStr}, ${senderName} wrote:<br></div></div>`;
     }
+    quotedRawHtml = rawMessageHtml;
   } else {
     quotedHtml = `<br><br><div class="gmail_quote"><div dir="ltr" class="gmail_attr">${quoteHeader.replace(/\n/g, '<br>')}<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">${textBody.replace(/\n/g, '<br>')}</blockquote></div>`;
   }
 
-  return { subject, to, cc, quotedText, quotedHtml };
+  return { subject, to, cc, quotedText, quotedHtml, quotedRawHtml };
 }

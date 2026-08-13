@@ -42,6 +42,14 @@ export interface ComposerInstance {
   inReplyTo?: string;
   isSending?: boolean;
   closing?: boolean;
+  // The quoted message's original HTML, preserved byte-for-byte (rendered
+  // read-only) rather than round-tripped through the rich-text editor's schema.
+  // See email-quote.ts for why this is kept separate from `html`.
+  quotedRawHtml?: string;
+  quoteMailbox?: string;
+  quoteMessageUid?: string | number;
+  quoteAllowRemoteResources?: boolean;
+  quoteMessageStructure?: any;
   [key: string]: any;
 }
 

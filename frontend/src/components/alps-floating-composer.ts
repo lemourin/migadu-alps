@@ -1235,6 +1235,11 @@ export class AlpsFloatingComposer extends LitElement {
               .text=${this.instance.text || ''}
               .htmlText=${this.instance.html || ''}
               .format=${this.instance.format || 'html'}
+              .quotedRawHtml=${this.instance.quotedRawHtml || ''}
+              .quoteMailbox=${this.instance.quoteMailbox || ''}
+              .quoteMessageUid=${this.instance.quoteMessageUid || ''}
+              .quoteAllowRemoteResources=${this.instance.quoteAllowRemoteResources || false}
+              .quoteMessageStructure=${this.instance.quoteMessageStructure || null}
               @text-changed=${(e: CustomEvent) => this.composeStore.updateComposer(this.instance.id, { text: e.detail.text, html: e.detail.html })}
             ></alps-message-composer>
           </div>

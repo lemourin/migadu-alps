@@ -4,7 +4,7 @@ import { customElement, property, state } from 'lit/decorators.js';
 import { ref, createRef } from 'lit/directives/ref.js';
 import type { Ref } from 'lit/directives/ref.js';
 import type { Attachment } from '../utils/attachment-utils';
-import { Editor, Extension } from '@tiptap/core';
+import { Editor, Extension, Node } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import { TextStyle } from '@tiptap/extension-text-style';
@@ -18,6 +18,8 @@ import { BubbleMenu } from '@tiptap/extension-bubble-menu';
 import { getMarkRange } from '@tiptap/core';
 import { consume } from '@lit/context';
 import { i18nContext, I18nStore } from '../store/i18n-store';
+import { sanitizeMessageHTML } from '../utils/html-sanitizer';
+import { applyThemeToIframe as sharedApplyTheme, setupIframeSizing as sharedSetupSizing } from '../utils/reader-utils';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -130,6 +132,78 @@ const Indent = Extension.create({
   },
 });
 
+// Preserves a quoted original message's HTML byte-for-byte instead of round-tripping
+// it through the rich-text editor's schema, which cannot represent arbitrary email
+// HTML (tables, inline styles, images, custom fonts) without silently stripping it.
+// The node is atom+non-selectable so it can't absorb a trailing selection and get
+// wiped out when the user types after it (see the always-appended empty paragraph
+// in insertQuotedRawHtml below).
+const RawHtmlBlock = Node.create({
+  name: 'rawHtmlBlock',
+  group: 'block',
+  atom: true,
+  selectable: false,
+  draggable: false,
+  addOptions() {
+    return {
+      mailbox: '',
+      messageUid: '',
+      allowRemoteResources: false,
+      messageStructure: null,
+      themeIframeContent: false,
+    };
+  },
+  addAttributes() {
+    return {
+      html: { default: '' },
+    };
+  },
+  // Lets a previously-saved draft round-trip: when a draft is reopened, its stored
+  // HTML (which may already contain our wrapper from an earlier save) is parsed as
+  // an HTML string via the `content:` option in initEditor(), not inserted via
+  // commands. Without this rule that reparse would fall through to the default
+  // schema-based parsing and destroy the preserved formatting all over again.
+  parseHTML() {
+    return [
+      { tag: 'div[data-alps-raw-html]', getAttrs: (el: HTMLElement) => ({ html: el.innerHTML }) },
+    ];
+  },
+  renderHTML({ node }) {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('data-alps-raw-html', '1');
+    wrapper.innerHTML = node.attrs.html;
+    return wrapper;
+  },
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement('div');
+      dom.contentEditable = 'false';
+      dom.style.cursor = 'default';
+
+      const iframe = document.createElement('iframe');
+      iframe.style.display = 'block';
+      iframe.style.width = '100%';
+      iframe.style.border = 'none';
+      iframe.setAttribute('sandbox', 'allow-same-origin');
+      dom.appendChild(iframe);
+
+      const sanitized = sanitizeMessageHTML(node.attrs.html, {
+        mailbox: this.options.mailbox,
+        messageUid: this.options.messageUid,
+        allowRemoteResources: this.options.allowRemoteResources,
+        messageStructure: this.options.messageStructure,
+      });
+      iframe.srcdoc = sanitized;
+      iframe.addEventListener('load', () => {
+        sharedSetupSizing(iframe, this.options.themeIframeContent);
+        sharedApplyTheme(iframe, this.options.themeIframeContent);
+      });
+
+      return { dom, ignoreMutation: () => true };
+    };
+  },
+});
+
 @customElement('alps-message-composer')
 export class AlpsMessageComposer extends LitElement {
   @consume({ context: i18nContext })
@@ -139,6 +213,11 @@ export class AlpsMessageComposer extends LitElement {
   @property({ type: String }) text = '';
   @property({ type: String }) htmlText = '';
   @property({ type: String }) format: 'html' | 'text' = 'text';
+  @property({ type: String }) quotedRawHtml = '';
+  @property({ type: String }) quoteMailbox = '';
+  @property({ type: String }) quoteMessageUid = '';
+  @property({ type: Boolean }) quoteAllowRemoteResources = false;
+  @property({ type: Object }) quoteMessageStructure: any = null;
 
   @state() private attachments: Attachment[] = [];
 
@@ -299,6 +378,13 @@ export class AlpsMessageComposer extends LitElement {
 
   private initEditor() {
     if (!this.editorContainerRef.value) return;
+
+    let themeIframeContent = false;
+    try {
+      const storedSettings = localStorage.getItem('alps_settings');
+      if (storedSettings) themeIframeContent = !!JSON.parse(storedSettings).themeIframeContent;
+    } catch (e) {}
+
     this.editor = new Editor({
       element: this.editorContainerRef.value,
       extensions: [
@@ -312,6 +398,13 @@ export class AlpsMessageComposer extends LitElement {
         Color,
         FontSize,
         Indent,
+        RawHtmlBlock.configure({
+          mailbox: this.quoteMailbox,
+          messageUid: this.quoteMessageUid,
+          allowRemoteResources: this.quoteAllowRemoteResources,
+          messageStructure: this.quoteMessageStructure,
+          themeIframeContent,
+        }),
         BubbleMenu.configure({
           element: this.bubbleMenuRef.value,
           options: {
@@ -346,6 +439,13 @@ export class AlpsMessageComposer extends LitElement {
         this.requestUpdate();
       }
     });
+    if (this.quotedRawHtml) {
+      const endPos = this.editor.state.doc.content.size;
+      this.editor.chain().insertContentAt(endPos, [
+        { type: 'rawHtmlBlock', attrs: { html: this.quotedRawHtml } },
+        { type: 'paragraph' },
+      ]).run();
+    }
     this.editor.setEditable(!this.isSending);
     this.requestUpdate();
   }
@@ -535,6 +635,16 @@ export class AlpsMessageComposer extends LitElement {
       margin: 0 0 1em 0;
       padding-left: 1em;
       color: var(--text-muted, #6b7280);
+    }
+
+    .editor-container .ProseMirror div[data-alps-raw-html] {
+      border-left: 3px solid var(--border-color, #e5e7eb);
+      margin: 0 0 1em 0;
+      padding-left: 1em;
+    }
+
+    .editor-container .ProseMirror div[data-alps-raw-html] iframe {
+      pointer-events: none;
     }
 
     .bubble-menu-container {
