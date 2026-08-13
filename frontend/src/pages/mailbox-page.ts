@@ -49,7 +49,7 @@ export class MailboxPage extends LitElement {
 
   private markReadTimer: ReturnType<typeof setTimeout> | null = null;
   private notificationSound = new Audio('/assets/notify.wav');
-  private audioUnlocked = false;
+  private audioUnlocked = true;
 
   private unlockAudio = () => {
     if (this.audioUnlocked) return;
